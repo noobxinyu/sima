@@ -18,7 +18,12 @@ public:
     std::array<std::pair<int64_t, int32_t>, 5> bids;
     std::array<std::pair<int64_t, int32_t>, 5> asks;
 
-    int64_t position = 0;
+    int64_t mid() {
+      return (bids[0].first + asks[0].first) / 2;
+    }
+
+    double position = 0;
+    std::array<double, 8> y;
   };
 
   using Series = std::vector<Snapshot>;

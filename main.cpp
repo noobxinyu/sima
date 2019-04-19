@@ -8,17 +8,34 @@
 #include "include/instrument.hpp"
 
 std::map<std::string, Instrument> data;
+std::map<std::string, int> ti_map;
+
+void evaluate_y(Instrument::Matrix& matrix, int di, int y_type, int interval) {
+  std::vector<double> y(28800);
+  for(int ti = 0; ti < 28800; ti++) {
+    if (ti + interval >= 28800 || matrix[di][ti].mid() == 0)
+    {
+      matrix[di][ti].y[y_type] = 0;
+    } else {
+      matrix[di][ti].y[y_type] = matrix[di][ti].position * double(matrix[di][ti + interval].mid() - matrix[di][ti].mid()) / matrix[di][ti].mid();
+    }
+  }
+}
 
 void worker() {
   auto& instrument = data["if1903"];
+  auto di = 0;
+  auto ti = 0;
+  /*auto& instrument = data["if1903"];
 
   auto di = 1;
   auto ti = 5;
-  instrument.matrix[di][ti].position = instrument.matrix[di][ti].bids[0].second > instrument.matrix[di][ti].asks[0].second ? 1 : 0;
-}
+  instrument.matrix[di][ti].position =
+      instrument.matrix[di][ti].bids[0].second > instrument.matrix[di][ti].asks[0].second ? 1 : 0;*/
 
-void evaluate() {
-  
+  evaluate_y(instrument.matrix, di, 0, 120); // 1min
+  evaluate_y(instrument.matrix, di, 1, 600); // 5min
+  evaluate_y(instrument.matrix, di, 2, 1200); // 10min
 }
 
 int main() {
@@ -74,6 +91,8 @@ int main() {
       double turnover;
       double volume;
 
+      auto base = 34200000L;
+
       while (reader.read_row(localTime, exchTime, tickerName, lastPrice, openInterest, turnover, volume,
                              askPrice1, askPrice2, askPrice3, askPrice4, askPrice5,
                              askVolume1, askVolume2, askVolume3, askVolume4, askVolume5,
@@ -81,10 +100,12 @@ int main() {
                              bidVolume1, bidVolume2, bidVolume3, bidVolume4, bidVolume5)) {
 
         auto& instrument = data[tickerName];
+        auto& last_ti = ti_map[tickerName];
         instrument.symbol = tickerName;
         Instrument::Snapshot snapshot;
         if (instrument.matrix.size() < di + 1) {
-          instrument.matrix.push_back(std::vector<Instrument::Snapshot>());
+          instrument.matrix.push_back(std::vector<Instrument::Snapshot>(28800));
+          last_ti = 0;
         }
 
         snapshot.local_time = localTime;
@@ -104,16 +125,34 @@ int main() {
         snapshot.asks[3] = std::make_pair(askPrice4 * 10000L, askVolume4);
         snapshot.asks[4] = std::make_pair(askPrice5 * 10000L, askVolume5);
 
-        auto& di = instrument.matrix.back();
-        if (di.size() > 0) {
-          auto diff = (snapshot.exch_time - di.back().exch_time) / 500000 - 1;
-          for (auto i = 0; i < diff; ++i) {
-            di.push_back(di.back());
-            di.back().exch_time += 500000;
+        auto hh = snapshot.exch_time / 10000000000;
+        auto mm = snapshot.exch_time / 100000000 % 100;
+        auto ss = snapshot.exch_time / 1000000 % 100;
+        auto mmm = snapshot.exch_time / 1000 % 1000;
+        auto tm = hh * 3600000 + mm * 60000 + ss * 1000 + mmm;
+        bool valid = false;
+        if (tm >= base) {
+          if (tm >= 41400000) {
+            tm -= 5400000;
+            if (tm >= 41400000 && tm <= 48600000) {
+              valid = true;
+            }
+          } else {
+            valid = true;
           }
         }
 
-        di.push_back(snapshot);
+        if (valid) {
+          auto ti = (tm - base) / 500;
+          auto& series = instrument.matrix.back();
+          series[ti] = snapshot;
+          // fill empty
+          for (auto i = last_ti + 1; i < ti; ++i) {
+            series[i] = series[last_ti];
+          }
+
+          last_ti = ti;
+        }
       }
 
       ++di;
@@ -122,7 +161,6 @@ int main() {
     date_current = utils::datetime::next_week_day(date_current, 1);
 
     worker();
-    evaluate();
   }
 
   return 0;
