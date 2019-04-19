@@ -10,16 +10,42 @@
 std::map<std::string, Instrument> data;
 std::map<std::string, int> ti_map;
 
-void evaluate_y(Instrument::Matrix& matrix, int di, int y_type, int interval) {
+// win_rate, return, sharpe
+std::tuple<double, double, double>
+evaluate_y(Instrument::Matrix& matrix, int di, int y_type, int interval) {
+  int win = 0;
+  int total = 0;
+  double mean = 0;
+  double var = 0;
+  double std = 0;
   std::vector<double> y(28800);
   for(int ti = 0; ti < 28800; ti++) {
     if (ti + interval >= 28800 || matrix[di][ti].mid() == 0)
     {
       matrix[di][ti].y[y_type] = 0;
     } else {
-      matrix[di][ti].y[y_type] = matrix[di][ti].position * double(matrix[di][ti + interval].mid() - matrix[di][ti].mid()) / matrix[di][ti].mid();
+      auto ret = matrix[di][ti].position * double(matrix[di][ti + interval].mid() - matrix[di][ti].mid()) / matrix[di][ti].mid();
+      matrix[di][ti].y[y_type] = ret;
+      mean += ret;
+      total++;
+      if (ret > 0) {
+        win++;
+      }
     }
   }
+
+  mean /= total;
+
+  for(auto ti = 0; ti < 28800; ti++)
+  {
+    if (matrix[di][ti].y[y_type] != 0) {
+      var += (matrix[di][ti].y[y_type] - mean) * (matrix[di][ti].y[y_type] - mean);
+    }
+  }
+  var /= total;
+  std = sqrt(var);
+
+  return std::make_tuple(double(win)/total, mean, mean/std);
 }
 
 void worker() {
