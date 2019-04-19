@@ -9,23 +9,25 @@
 
 std::map<std::string, Instrument> data;
 
-void worker()
-{
+void worker() {
+  auto& instrument = data["if1903"];
 
+  auto di = 1;
+  auto ti = 5;
+  instrument.matrix[di][ti].position = instrument.matrix[di][ti].bids[0].second > instrument.matrix[di][ti].asks[0].second ? 1 : 0;
 }
 
-void evaluate()
-{
-
+void evaluate() {
+  
 }
 
 int main() {
   // read files
   utils::config::Parser parser("config.ini");
-  auto &top = parser.top();
+  auto& top = parser.top();
 
   auto date_start = std::stoi(top.value("start", "20181206"));
-  auto date_end = std::stoi(top.value("end", "20190308"));
+  auto date_end = std::stoi(top.value("end", "20181206"));
   auto path = top.value("path", "/home/xinyu/index_future/%Y%m%d.csv");
 
   auto date_current = date_start;
@@ -35,7 +37,8 @@ int main() {
     std::cout << file_path << std::endl;
     if (utils::filesystem::exist(file_path)) {
       io::CSVReader<27> reader(file_path);
-      reader.read_header(io::ignore_extra_column, "localTime", "exchTime", "tickerName", "lastPrice", "openInterest",
+      reader.read_header(io::ignore_extra_column,
+                         "localTime", "exchTime", "tickerName", "lastPrice", "openInterest",
                          "turnover", "volume",
                          "askPrice1", "askPrice2", "askPrice3", "askPrice4", "askPrice5",
                          "askVolume1", "askVolume2", "askVolume3", "askVolume4", "askVolume5",
@@ -77,10 +80,10 @@ int main() {
                              bidPrice1, bidPrice2, bidPrice3, bidPrice4, bidPrice5,
                              bidVolume1, bidVolume2, bidVolume3, bidVolume4, bidVolume5)) {
 
-        auto &instrument = data[tickerName];
+        auto& instrument = data[tickerName];
+        instrument.symbol = tickerName;
         Instrument::Snapshot snapshot;
-        if (instrument.matrix.size() < di + 1)
-        {
+        if (instrument.matrix.size() < di + 1) {
           instrument.matrix.push_back(std::vector<Instrument::Snapshot>());
         }
 
@@ -101,7 +104,16 @@ int main() {
         snapshot.asks[3] = std::make_pair(askPrice4 * 10000L, askVolume4);
         snapshot.asks[4] = std::make_pair(askPrice5 * 10000L, askVolume5);
 
-        instrument.matrix.back().push_back(snapshot);
+        auto& di = instrument.matrix.back();
+        if (di.size() > 0) {
+          auto diff = (snapshot.exch_time - di.back().exch_time) / 500000 - 1;
+          for (auto i = 0; i < diff; ++i) {
+            di.push_back(di.back());
+            di.back().exch_time += 500000;
+          }
+        }
+
+        di.push_back(snapshot);
       }
 
       ++di;

@@ -31,7 +31,7 @@ public:
 public:
   std::string symbol;
 
-  Matrix matrix;
+  Matrix matrix; // di->ti->Snapshot
 };
 
 #endif //SIMA_INSTRUMENT_HPP
